@@ -1,2 +1,2 @@
 # botLinuxEdition
-Простой и удобный Telegram-бот для группы. 🚀
+Fast and funny bor to your group in Telegram. 🚀
