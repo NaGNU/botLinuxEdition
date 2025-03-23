@@ -12,15 +12,15 @@ import (
 )
 
  
-func startCommandHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
-	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text:   "This is a handler example!",
-	})
-	if err != nil {
-		fmt.Println("Error while sending message:", err)
-	}
-}
+// func startCommandHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
+// 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+// 		ChatID: update.Message.Chat.ID,
+// 		Text:   "This is a handler example!",
+// 	})
+// 	if err != nil {
+// 		fmt.Println("Error while sending message:", err)
+// 	}
+// }
 
  
 func muteCommandHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
