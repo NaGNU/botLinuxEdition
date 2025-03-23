@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const botToken = process.env.BOT_TOKEN;
 const bot = new TelegramBot(botToken, { polling: true });
- 
+
 function loadAdmins() {
     try {
         const data = fs.readFileSync('admins.json', 'utf8');
@@ -19,8 +19,8 @@ function loadAdmins() {
 
 const admins = loadAdmins();
 
-const warns = {}; 
-const muted = {}; 
+const warns = {};
+const muted = {};
 const banned = {};
 
 function isAdmin(userId) {
@@ -271,7 +271,7 @@ function runQuiz(chatId) {
 bot.onText(/\/myid/, (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    
+
     bot.sendMessage(chatId, `Твой ID: ${userId}`);
 });
 
@@ -440,7 +440,6 @@ bot.onText(/\/arch/, (msg) => {
 
 // Execute code
 
-const sandbox = require("sandbox");
 
 bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
   const chatId = msg.chat.id;
@@ -460,21 +459,35 @@ bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
     /import\s+os/,
     /import\s+builtins/,
     /import\s+pty/,
-		/import\s+shutils/,
+    /import\s+shutil/,
     /import\s+base64/,
     /import\s+sys/,
-		/import\s+socket/,
+    /import\s+socket/,
     /import\s+subprocess/,
+    /import\s+importlib/,
+    /from\s+os\s+import/,
+    /from\s+sys\s+import/,
+    /from\s+subprocess\s+import/,
+    /from\s+socket\s+import/,
+    /from\s+shutil\s+import/,
+    /from\s+base64\s+import/,
+    /from\s+pty\s+import/,
+    /from\s+builtins\s+import/,
+    /from\s+importlib\s+import/,
+
+    /exec\(/,
+    /eval\(/,
     /compile\(/,
     /open\(/,
-		/rmtree\(/,
-		/copytree\(/,
-		/remove\(/,
-    /exec\(/,
-    /rm\(/,
-    /eval\(/,
-    /__import__/,
-    /importlib/,
+    /rmtree\(/,
+    /copytree\(/,
+    /remove\(/,
+    /system\(/,
+    /popen\(/,
+    /__import__\(/,
+
+    /\+.*['"]\s*import\s*['"]/,
+    /['"]\s*\+\s*['"]/,
   ];
 
   for (const pattern of blacklistedPatterns) {
@@ -482,6 +495,11 @@ bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
       bot.sendMessage(chatId, "Ошибка: Обнаружен запрещенный код.");
       return;
     }
+  }
+
+  if (/exec\s*\(|eval\s*\(/.test(pythonCode)) {
+    bot.sendMessage(chatId, "Ошибка: Использование exec или eval запрещено.");
+    return;
   }
 
   const pythonCommand = `python3 -c "${pythonCode.replace(/"/g, '\\"')}"`;
@@ -543,11 +561,11 @@ bot.on('message', (msg) => {
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'there';
     const text = msg.text.toLowerCase();
-  
+
     if (text === 'sudo rm -rf /*') {
       const mention = `@${msg.from.username || userName}`;
       const replyMessage = `${mention} Ну ты и шутник!`;
-  
+
       bot.sendMessage(chatId, replyMessage, {
         parse_mode: 'Markdown'
       });
@@ -559,11 +577,11 @@ bot.on('message', (msg) => {
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'there';
     const text = msg.text.toLowerCase();
-  
+
     if (text === 'Ты еблан') {
       const mention = `@${msg.from.username || userName}`;
       const replyMessage = `${mention} Без оскорблений!`;
-  
+
       bot.sendMessage(chatId, replyMessage, {
         parse_mode: 'Markdown'
       });
@@ -575,11 +593,11 @@ bot.on('message', (msg) => {
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'there';
     const text = msg.text.toLowerCase();
-  
+
     if (text === 'Ты тупой') {
       const mention = `@${msg.from.username || userName}`;
       const replyMessage = `${mention} Ну ты и шутник!`;
-  
+
       bot.sendMessage(chatId, replyMessage, {
         parse_mode: 'Markdown'
       });
@@ -591,11 +609,11 @@ bot.on('message', (msg) => {
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'there';
     const text = msg.text.toLowerCase();
-  
+
     if (text === 'sudo rm -rf /* --no-preserve-root') {
       const mention = `@${msg.from.username || userName}`;
       const replyMessage = `${mention} Ну ты и шутник!`;
-  
+
       bot.sendMessage(chatId, replyMessage, {
         parse_mode: 'Markdown'
       });
@@ -607,11 +625,11 @@ bot.on('message', (msg) => {
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'there';
     const text = msg.text.toLowerCase();
-  
+
     if (text === 'rm -rf /*') {
       const mention = `@${msg.from.username || userName}`;
       const replyMessage = `${mention} Permission Denied!`;
- 
+
       bot.sendMessage(chatId, replyMessage, {
         parse_mode: 'Markdown'
       });
@@ -681,7 +699,7 @@ bot.onText(/\/help/, (msg) => {
 
 bot.onText(/\/timer (\d+)/, (msg, match) => {
     const chatId = msg.chat.id;
-    const timeInSeconds = parseInt(match[1]); 
+    const timeInSeconds = parseInt(match[1]);
 
     if (isNaN(timeInSeconds) || timeInSeconds <= 0) {
         bot.sendMessage(chatId, 'Укажи корректное время в секундах.');
@@ -699,9 +717,9 @@ const chatUsers = {};
 
 async function updateChatMembers(chatId) {
     try {
-        
+
         const members = await bot.getChatAdministrators(chatId);
-        
+
         chatUsers[chatId] = members.map(member => member.user);
     } catch (error) {
         console.error(`[Error while updating members in chat ${chatId}]`, error);
@@ -719,7 +737,7 @@ bot.on('message', async (msg) => {
     const text = msg.text.toLowerCase();
 
     if (text.startsWith('бот кто')) {
-        const userText = text.slice(8).trim(); 
+        const userText = text.slice(8).trim();
 
         if (!chatUsers[chatId] || chatUsers[chatId].length === 0) {
             await updateChatMembers(chatId);
@@ -744,7 +762,7 @@ setInterval(async () => {
     for (const chatId in chatUsers) {
         await updateChatMembers(chatId);
     }
-}, 60000); 
+}, 60000);
 
 bot.on('polling_error', (error) => {
 	console.log("Polling_error:", error.code, error.response ? error.response.body : error);
@@ -779,11 +797,11 @@ bot.on('message', (msg) => {
 	    const userWhoActed = msg.from.username || msg.from.first_name || 'Аноним';
 	    const replyTo = msg.reply_to_message;
 
-	    if (!replyTo) return; 
+	    if (!replyTo) return;
 
 	    const targetUser = replyTo.from.username;
 
-	    if (!replyTo) return; 
+	    if (!replyTo) return;
 	    const actionText = msg.text.toLowerCase();
 
 	    if (actionText.includes('обнять')) {
@@ -825,21 +843,20 @@ bot.on('message', (msg) => {
 																												    } else if (actionText.includes('поцеловать в шею')) {
 																													            bot.sendMessage(chatId, `💋 ${userWhoActed} поцеловал ${targetUser} в шею!`);
 																													        } else if (actionText.includes('прикоснуться к щеке')) {
-																															        bot.sendMessage(chatId, `🥰 ${userWhoActed} прикоснулся к щеке ${targetUser}!`);
-																															    } else if (actionText.includes('встряхнуть')) {
-																																            bot.sendMessage(chatId, `👐 ${userWhoActed} встряхнул ${targetUser}!`);
-																																        } else if (actionText.includes('позаботиться')) {
-																																		        bot.sendMessage(chatId, `💝 ${userWhoActed} позаботился о ${targetUser}!`);
-																																		    } else if (actionText.includes('обнять за талию')) {
-																																			            bot.sendMessage(chatId, `💃 ${userWhoActed} обнял ${targetUser} за талию!`);
-																																			        } else if (actionText.includes('покачать на руках')) {
-																																					        bot.sendMessage(chatId, `💪 ${userWhoActed} покачал ${targetUser} на руках!`);
-																																					    } else if (actionText.includes('сделать массаж')) {
-																																						            bot.sendMessage(chatId, `💆‍♂️ ${userWhoActed} сделал массаж ${targetUser}!`);
-																																						        } else if (actionText.includes('поцеловать в лобик')) {
-																																								        bot.sendMessage(chatId, `💋 ${userWhoActed} поцеловал ${targetUser} в лобик!`);
-																																								    } else if (actionText.includes('пожать плечо')) {
-																																									            bot.sendMessage(chatId, `💪 ${userWhoActed} пожал плечо ${targetUser}!`);
-																																									        }
+																														       bot.sendMessage(chatId, `🥰 ${userWhoActed} прикоснулся к щеке ${targetUser}!`);
+																														   } else if (actionText.includes('встряхнуть')) {
+																														           bot.sendMessage(chatId, `👐 ${userWhoActed} встряхнул ${targetUser}!`);
+																														       } else if (actionText.includes('позаботиться')) {
+																														       bot.sendMessage(chatId, `💝 ${userWhoActed} позаботился о ${targetUser}!`);
+																														   } else if (actionText.includes('обнять за талию')) {
+																														           bot.sendMessage(chatId, `💃 ${userWhoActed} обнял ${targetUser} за талию!`);
+																														       } else if (actionText.includes('покачать на руках')) {
+																														       bot.sendMessage(chatId, `💪 ${userWhoActed} покачал ${targetUser} на руках!`);
+																														   } else if (actionText.includes('сделать массаж')) {
+																														           bot.sendMessage(chatId, `💆‍♂️ ${userWhoActed} сделал массаж ${targetUser}!`);
+																														       } else if (actionText.includes('поцеловать в лобик')) {
+																														       bot.sendMessage(chatId, `💋 ${userWhoActed} поцеловал ${targetUser} в лобик!`);
+																														   } else if (actionText.includes('пожать плечо')) {
+																														           bot.sendMessage(chatId, `💪 ${userWhoActed} пожал плечо ${targetUser}!`);
+																														       }
 });
-
