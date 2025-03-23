@@ -440,7 +440,6 @@ bot.onText(/\/arch/, (msg) => {
 
 // Execute code
 
-const sandbox = require("sandbox");
 
 bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
   const chatId = msg.chat.id;
@@ -460,21 +459,35 @@ bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
     /import\s+os/,
     /import\s+builtins/,
     /import\s+pty/,
-		/import\s+shutils/,
+    /import\s+shutil/,
     /import\s+base64/,
     /import\s+sys/,
-		/import\s+socket/,
+    /import\s+socket/,
     /import\s+subprocess/,
+    /import\s+importlib/,
+    /from\s+os\s+import/,
+    /from\s+sys\s+import/,
+    /from\s+subprocess\s+import/,
+    /from\s+socket\s+import/,
+    /from\s+shutil\s+import/,
+    /from\s+base64\s+import/,
+    /from\s+pty\s+import/,
+    /from\s+builtins\s+import/,
+    /from\s+importlib\s+import/,
+
+    /exec\(/,
+    /eval\(/,
     /compile\(/,
     /open\(/,
-		/rmtree\(/,
-		/copytree\(/,
-		/remove\(/,
-    /exec\(/,
-    /rm\(/,
-    /eval\(/,
-    /__import__/,
-    /importlib/,
+    /rmtree\(/,
+    /copytree\(/,
+    /remove\(/,
+    /system\(/,
+    /popen\(/,
+    /__import__\(/,
+
+    /\+.*['"]\s*import\s*['"]/,
+    /['"]\s*\+\s*['"]/,
   ];
 
   for (const pattern of blacklistedPatterns) {
@@ -482,6 +495,11 @@ bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
       bot.sendMessage(chatId, "Ошибка: Обнаружен запрещенный код.");
       return;
     }
+  }
+
+  if (/exec\s*\(|eval\s*\(/.test(pythonCode)) {
+    bot.sendMessage(chatId, "Ошибка: Использование exec или eval запрещено.");
+    return;
   }
 
   const pythonCommand = `python3 -c "${pythonCode.replace(/"/g, '\\"')}"`;
