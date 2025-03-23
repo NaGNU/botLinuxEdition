@@ -33,9 +33,15 @@ func main() {
 		panic(fmt.Sprintf("Error while initializing bot: %v", err))
 	}
 
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypeExact, startCommandHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/mute", bot.MatchTypeContains, muteCommandHandler)
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/unmute", bot.MatchTypeContains, unmuteCommandHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/fact", bot.MatchTypeContains, randomFactHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/quote", bot.MatchTypeContains, randomQuoteHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/newyear", bot.MatchTypeContains, daysUntilNewYearHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/summer", bot.MatchTypeContains, daysUntilSummerHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/fetch", bot.MatchTypeContains, fetchCommandHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/warn", bot.MatchTypeContains, warnCommandHandler)
+	b.RegisterHandler(bot.HandlerTypeMessageText, "/unwarn", bot.MatchTypeContains, unwarnCommandHandler)
 
 	b.Start(ctx)
 }

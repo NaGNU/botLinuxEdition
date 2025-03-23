@@ -17,7 +17,9 @@ func openDatabase() (*sql.DB, error) {
 func createTables() {
 	query := `
 	CREATE TABLE IF NOT EXISTS warned (
-		user_id INTEGER PRIMARY KEY
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INTEGER,
+		chat_id INTEGER
 	);
 
 	CREATE TABLE IF NOT EXISTS banned (
