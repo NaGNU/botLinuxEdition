@@ -1,0 +1,4 @@
+database/*.db
+config/config.yaml
+.deprecated/
+go.sum
