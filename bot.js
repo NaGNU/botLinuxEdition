@@ -4,10 +4,82 @@ const crypto = require('crypto');
 const fs = require("fs");
 require('dotenv').config();
 const path = require("path");
-
+const { InlineKeyboard } = require('telegram-keyboard');
 
 const botToken = process.env.BOT_TOKEN;
 const bot = new TelegramBot(botToken, { polling: true });
+
+const axios = require('axios');
+const NodeCache = require('node-cache');
+
+const weatherCache = new NodeCache({ stdTTL: 600 });
+
+const formatTemp = (temp) => `${Math.round(temp)}°C`;
+
+const getWeather = async (city) => {
+    const apiKey = 'aa1f5e3818444b79b10105107252503';
+    const cacheKey = `weather_${city.toLowerCase()}`;
+    
+    const cachedWeather = weatherCache.get(cacheKey);
+    if (cachedWeather) {
+        return cachedWeather;
+    }
+
+    try {
+        const response = await axios.get(
+            `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${encodeURIComponent(city)}&lang=ru`
+        );
+        
+        const data = response.data;
+        const weatherData = {
+            temp: data.current.temp_c,
+            feelsLike: data.current.feelslike_c,
+            description: data.current.condition.text,
+            humidity: data.current.humidity,
+            windSpeed: data.current.wind_kph / 3.6, 
+            pressure: data.current.pressure_mb * 0.750062,
+            city: data.location.name,
+            country: data.location.country,
+            timestamp: new Date(data.current.last_updated)
+        };
+        
+        weatherCache.set(cacheKey, weatherData);
+        return weatherData;
+    } catch (error) {
+        if (error.response?.status === 400) {
+            throw new Error('Город не найден!');
+        }
+        throw new Error('Ошибка получения погоды. Попробуйте позже.');
+    }
+};
+
+bot.onText(/^Бот погода (.+)/i, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const city = match[1].trim();
+
+    try {
+        const weather = await getWeather(city);
+        
+        const response = `
+🌤️ Погода в ${weather.city}, ${weather.country}:
+Температура: ${formatTemp(weather.temp)}
+Ощущается как: ${formatTemp(weather.feelsLike)}
+Описание: ${weather.description}
+Влажность: ${weather.humidity}%
+Ветер: ${weather.windSpeed.toFixed(1)} м/с
+Давление: ${Math.round(weather.pressure)} мм рт. ст.
+Обновлено: ${moment(weather.timestamp).format('HH:mm DD.MM.YYYY')}
+        `.trim();
+
+        bot.sendMessage(chatId, response);
+    } catch (error) {
+        bot.sendMessage(chatId, error.message);
+    }
+});
+
+bot.onText(/^Бот погода$/i, (msg) => {
+    bot.sendMessage(msg.chat.id, 'Укажите город после "Бот погода", например: "Бот погода Киев"');
+});
 
 function loadAdmins() {
     try {
@@ -18,6 +90,8 @@ function loadAdmins() {
         return [];
     }
 }
+
+// Pogoda SVO
 
 const admins = loadAdmins();
 
@@ -214,6 +288,394 @@ bot.onText(/\/fetch(?:\s*(-neofetch))?/, (msg, match) => {
   });
 });
 
+// GB
+
+bot.onText(/\/gb/, async (msg) => {
+  const chatId = msg.chat.id;
+  const replyTo = msg.reply_to_message;
+
+  if (!replyTo) {
+    bot.sendMessage(chatId, "⛔ Ответьте на сообщение пользователя для голосования!");
+    return;
+  }
+
+  const admins = await bot.getChatAdministrators(chatId);
+  const isAdmin = admins.some(admin => admin.user.id === msg.from.id);
+
+  if (!isAdmin) {
+    bot.sendMessage(chatId, "🚫 Только администраторы могут запускать голосование за бан!");
+    return;
+  }
+
+  const targetUser = replyTo.from;
+  const mention = `@${targetUser.username || targetUser.first_name}`;
+  const pollMessage = `⚖️ Голосование: Забанить ${mention}?\n⏳ Время: 5 минут`;
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "✅ За", callback_data: `ban_yes_${targetUser.id}` },
+        { text: "❌ Против", callback_data: `ban_no_${targetUser.id}` }
+      ]
+    ]
+  };
+
+  bot.sendMessage(chatId, pollMessage, {
+    reply_to_message_id: replyTo.message_id,
+    reply_markup: keyboard
+  });
+
+  const votes = { yes: 0, no: 0, voters: new Set() };
+  const timeout = setTimeout(async () => {
+    const result = votes.yes > votes.no 
+      ? `🔨 ${mention} будет забанен! (За: ${votes.yes}, Против: ${votes.no})`
+      : `🕊️ ${mention} остаётся! (За: ${votes.yes}, Против: ${votes.no})`;
+    
+    bot.sendMessage(chatId, result);
+    if (votes.yes > votes.no) {
+      await bot.banChatMember(chatId, targetUser.id);
+    }
+  }, 5 * 60 * 1000);
+
+  bot.on('callback_query', (query) => {
+    const voterId = query.from.id;
+    const [action, userId] = query.data.split('_').slice(1);
+
+    if (parseInt(userId) !== targetUser.id || votes.voters.has(voterId)) {
+      bot.answerCallbackQuery(query.id, { text: "Вы уже проголосовали или это не то голосование!" });
+      return;
+    }
+
+    votes.voters.add(voterId);
+    if (action === 'yes') votes.yes++;
+    else votes.no++;
+
+    bot.answerCallbackQuery(query.id, { text: `Вы проголосовали ${action === 'yes' ? 'За' : 'Против'}!` });
+  });
+});
+
+// GB SVO
+
+bot.onText(/\/rate (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const item = match[1];
+  const rating = Math.floor(Math.random() * 11);
+  bot.sendMessage(chatId, `⭐ Я оцениваю "${item}" на ${rating}/10!`);
+});
+
+// RPS
+
+const games = new Map(); 
+
+bot.onText(/\/rps/, async (msg) => {
+  const chatId = msg.chat.id;
+  const initiatorId = msg.from.id;
+  const replyTo = msg.reply_to_message;
+
+  if (!replyTo) {
+    bot.sendMessage(chatId, "⛔ Ответьте на сообщение пользователя, чтобы пригласить его в игру!");
+    return;
+  }
+
+  const opponentId = replyTo.from.id;
+  if (initiatorId === opponentId) {
+    bot.sendMessage(chatId, "😂 Нельзя играть с самим собой!");
+    return;
+  }
+
+  if (games.has(chatId)) {
+    bot.sendMessage(chatId, "⏳ В этом чате уже идёт игра, подождите!");
+    return;
+  }
+
+  const initiatorName = msg.from.first_name || 'Игрок 1';
+  const opponentName = replyTo.from.first_name || 'Игрок 2';
+  const game = {
+    initiator: { id: initiatorId, name: initiatorName, choice: null },
+    opponent: { id: opponentId, name: opponentName, choice: null },
+    round: 1,
+    score: { initiator: 0, opponent: 0 }
+  };
+  games.set(chatId, game);
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "✅ Да", callback_data: `rps_${chatId}_accept` },
+        { text: "❌ Нет", callback_data: `rps_${chatId}_decline` }
+      ]
+    ]
+  };
+
+  bot.sendMessage(chatId, `🎮 ${initiatorName} приглашает ${opponentName} сыграть в Камень-Ножницы-Бумага!\n${opponentName}, согласны?`, {
+    reply_to_message_id: replyTo.message_id,
+    reply_markup: keyboard
+  });
+});
+
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const userId = query.from.id;
+  const [prefix, gameChatId, action] = query.data.split('_');
+
+  if (prefix !== 'rps' || parseInt(gameChatId) !== chatId) return;
+  if (!games.has(chatId)) {
+    bot.answerCallbackQuery(query.id, { text: "Игра не найдена!" });
+    return;
+  }
+
+  const game = games.get(chatId);
+  const choiceMap = { rock: "✊ Камень", scissors: "✂️ Ножницы", paper: "📜 Бумага" };
+  const winConditions = { rock: "scissors", scissors: "paper", paper: "rock" };
+
+  if (action === 'accept' || action === 'decline') {
+    if (userId !== game.opponent.id) {
+      bot.answerCallbackQuery(query.id, { text: "Это приглашение не для вас!" });
+      return;
+    }
+
+    if (action === 'decline') {
+      bot.editMessageText(`🚫 ${game.opponent.name} отказался играть с ${game.initiator.name}!`, {
+        chat_id: chatId,
+        message_id: query.message.message_id
+      });
+      games.delete(chatId);
+      bot.answerCallbackQuery(query.id, { text: "Вы отказались от игры!" });
+      return;
+    }
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: "✊ Камень", callback_data: `rps_${chatId}_rock` },
+          { text: "✂️ Ножницы", callback_data: `rps_${chatId}_scissors` },
+          { text: "📜 Бумага", callback_data: `rps_${chatId}_paper` }
+        ]
+      ]
+    };
+
+    bot.editMessageText(
+      `🎮 Раунд ${game.round}\n${game.initiator.name} vs ${game.opponent.name}\nСчёт: ${game.score.initiator} - ${game.score.opponent}\nВыберите свой ход (тайно):`,
+      {
+        chat_id: chatId,
+        message_id: query.message.message_id,
+        reply_markup: keyboard
+      }
+    );
+    bot.answerCallbackQuery(query.id, { text: "Вы приняли приглашение! Выберите ход." });
+    return;
+  }
+
+  if (["rock", "scissors", "paper"].includes(action)) {
+    if (userId !== game.initiator.id && userId !== game.opponent.id) {
+      bot.answerCallbackQuery(query.id, { text: "Вы не участвуете в этой игре!" });
+      return;
+    }
+
+    const player = userId === game.initiator.id ? game.initiator : game.opponent;
+    if (player.choice) {
+      bot.answerCallbackQuery(query.id, { text: "Вы уже сделали выбор!" });
+      return;
+    }
+
+    player.choice = action;
+    bot.answerCallbackQuery(query.id, { text: `Вы выбрали: ${choiceMap[action]}` });
+
+    if (game.initiator.choice && game.opponent.choice) {
+      const initChoice = game.initiator.choice;
+      const oppChoice = game.opponent.choice;
+      let result;
+
+      if (initChoice === oppChoice) {
+        result = "🤝 Ничья!";
+      } else if (winConditions[initChoice] === oppChoice) {
+        result = `🏆 ${game.initiator.name} победил!`;
+        game.score.initiator++;
+      } else {
+        result = `🏆 ${game.opponent.name} победил!`;
+        game.score.opponent++;
+      }
+
+      game.round++;
+      game.initiator.choice = null;
+      game.opponent.choice = null;
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: "✊ Камень", callback_data: `rps_${chatId}_rock` },
+            { text: "✂️ Ножницы", callback_data: `rps_${chatId}_scissors` },
+            { text: "📜 Бумага", callback_data: `rps_${chatId}_paper` }
+          ],
+          [
+            { text: "🏁 Завершить игру", callback_data: `rps_${chatId}_end` }
+          ]
+        ]
+      };
+
+      bot.editMessageText(
+        `🎮 Раунд ${game.round - 1}\n${game.initiator.name}: ${choiceMap[initChoice]}\n${game.opponent.name}: ${choiceMap[oppChoice]}\n${result}\n\nСчёт: ${game.score.initiator} - ${game.score.opponent}\nРаунд ${game.round}\nВыберите следующий ход:`,
+        {
+          chat_id: chatId,
+          message_id: query.message.message_id,
+          reply_markup: keyboard
+        }
+      );
+    }
+    return;
+  }
+
+  if (action === 'end') {
+    const finalResult = game.score.initiator > game.score.opponent
+      ? `🎉 ${game.initiator.name} выиграл матч!`
+      : game.score.initiator < game.score.opponent
+      ? `🎉 ${game.opponent.name} выиграл матч!`
+      : "🎲 Ничья в матче!";
+
+    bot.editMessageText(
+      `🏁 Игра завершена!\n${game.initiator.name}: ${game.score.initiator}\n${game.opponent.name}: ${game.score.opponent}\n${finalResult}`,
+      {
+        chat_id: chatId,
+        message_id: query.message.message_id
+      }
+    );
+    games.delete(chatId);
+    bot.answerCallbackQuery(query.id, { text: "Игра завершена!" });
+  }
+});
+
+// RPS SVO
+
+const QRCode = require('qrcode');
+
+bot.onText(/\/qr (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const text = match[1];
+  try {
+    const qrImage = await QRCode.toBuffer(text);
+    bot.sendPhoto(chatId, qrImage, { caption: `📷 QR` });
+  } catch (error) {
+    bot.sendMessage(chatId, "❌ Ошибка при создании QR-кода!");
+  }
+});
+
+bot.onText(/\/wish (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const wish = match[1];
+  const msgWish = await bot.sendMessage(chatId, `🌟 ${wish}... Загадываю!`);
+  await new Promise(r => setTimeout(r, 1000));
+  await bot.editMessageText(`✨ Исполняю: ${wish}!`, { chat_id: chatId, message_id: msgWish.message_id });
+  await new Promise(r => setTimeout(r, 1000));
+  bot.editMessageText(`🎉 ${wish} исполнено !`, { chat_id: chatId, message_id: msgWish.message_id });
+});
+
+const symbols = ['🍒', '🍋', '🍊', '💎', '🔔', '7️⃣'];
+
+bot.onText(/\/slot/, async (msg) => {
+  const chatId = msg.chat.id;
+  const player = msg.from.first_name;
+  const spin = () => symbols[Math.floor(Math.random() * symbols.length)];
+  let result = [spin(), spin(), spin()];
+  const slotMsg = await bot.sendMessage(chatId, `🎰 ${player} крутит слот...\n${result.join(' ')}`);
+  
+  for (let i = 0; i < 3; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    result = [spin(), spin(), spin()];
+    await bot.editMessageText(`🎰 ${player} крутит слот...\n${result.join(' ')}`, { chat_id: chatId, message_id: slotMsg.message_id });
+  }
+
+  const win = result[0] === result[1] && result[1] === result[2];
+  bot.editMessageText(
+    win ? `🎰 Джекпот! ${player} выиграл с ${result.join(' ')}!` : `🎰 ${player}, не повезло: ${result.join(' ')}`,
+    { chat_id: chatId, message_id: slotMsg.message_id }
+  );
+});
+
+bot.onText(/\/bomb/, async (msg) => {
+  const chatId = msg.chat.id;
+  const player = msg.from.first_name;
+  const correctWire = Math.floor(Math.random() * 3);
+  const wires = ['🔴 Красный', '🟢 Зелёный', '🔵 Синий'];
+
+  const keyboard = {
+    inline_keyboard: wires.map((w, i) => [{ text: w, callback_data: `bomb_${chatId}_${i}` }])
+  };
+
+  const bombMsg = await bot.sendMessage(chatId, `💣 ${player}, у тебя 10 секунд, чтобы разминировать бомбу!\nВыбери провод:`, { reply_markup: keyboard });
+  let timeLeft = 10;
+
+  const timer = setInterval(async () => {
+    timeLeft--;
+    if (timeLeft > 0) {
+      await bot.editMessageText(`💣 ${player}, осталось ${timeLeft} сек!\nВыбери провод:`, { chat_id: chatId, message_id: bombMsg.message_id, reply_markup: keyboard });
+    }
+  }, 1000);
+
+  bot.on('callback_query', async (query) => {
+    const [_, cId, wire] = query.data.split('_');
+    if (parseInt(cId) !== chatId) return;
+
+    clearInterval(timer);
+    if (parseInt(wire) === correctWire) {
+      await bot.editMessageText(`🎉 ${player} разминировал бомбу! Правильный провод: ${wires[correctWire]}`, { chat_id: chatId, message_id: bombMsg.message_id });
+    } else {
+      await bot.editMessageText(`💥 БУМ! ${player}, ты выбрал ${wires[wire]}, а надо было ${wires[correctWire]}!`, { chat_id: chatId, message_id: bombMsg.message_id });
+    }
+    bot.answerCallbackQuery(query.id);
+  });
+
+  setTimeout(() => {
+    if (timeLeft > 0) return;
+    clearInterval(timer);
+    bot.editMessageText(`💥 ВРЕМЯ ВЫШЛО! ${player}, бомба взорвалась!`, { chat_id: chatId, message_id: bombMsg.message_id });
+  }, 10000);
+});
+
+bot.onText(/\/duel/, async (msg) => {
+  const chatId = msg.chat.id;
+  const replyTo = msg.reply_to_message;
+  if (!replyTo) {
+    bot.sendMessage(chatId, "⛔ Ответь на сообщение соперника!");
+    return;
+  }
+
+  const p1 = msg.from.first_name;
+  const p2 = replyTo.from.first_name;
+  const p1Id = msg.from.id;
+  const p2Id = replyTo.from.id;
+
+  const keyboard = {
+    inline_keyboard: [[{ text: "🤠 Готов", callback_data: `duel_${chatId}_${p1Id}_${p2Id}_ready` }]]
+  };
+
+  const duelMsg = await bot.sendMessage(chatId, `⚔️ ${p1} вызывает ${p2} на дуэль!\n${p2}, готов?`, { reply_markup: keyboard });
+
+  let ready = false;
+  bot.on('callback_query', async (query) => {
+    const [_, cId, p1IdQ, p2IdQ, action] = query.data.split('_');
+    if (parseInt(cId) !== chatId || action !== 'ready' || parseInt(p2IdQ) !== query.from.id) return;
+
+    if (!ready) {
+      ready = true;
+      await bot.editMessageText(`⚔️ ${p2} готов! Ждите сигнала...`, { chat_id: chatId, message_id: duelMsg.message_id });
+      const wait = Math.floor(Math.random() * 5000) + 2000;
+      setTimeout(async () => {
+        const shootKeyboard = {
+          inline_keyboard: [[{ text: "🔫 Выстрелить!", callback_data: `duel_${chatId}_${p1Id}_${p2Id}_shoot` }]]
+        };
+        await bot.editMessageText(`🔥 СЕЙЧАС!`, { chat_id: chatId, message_id: duelMsg.message_id, reply_markup: shootKeyboard });
+
+        let winner = null;
+        bot.on('callback_query', async (q) => {
+          if (q.data !== `duel_${chatId}_${p1Id}_${p2Id}_shoot` || winner) return;
+          winner = q.from.id === p1Id ? p1 : p2;
+          await bot.editMessageText(`🏆 ${winner} выстрелил первым и победил!`, { chat_id: chatId, message_id: duelMsg.message_id });
+          bot.answerCallbackQuery(q.id, { text: "Ты победил!" });
+        });
+      }, wait);
+    }
+  });
+});
 
 bot.onText(/\/reminder (\d+)(m|h|d) (.+)/, (msg, match) => {
     const duration = parseInt(match[1]);
@@ -531,108 +993,162 @@ bot.onText(/\/arch/, (msg) => {
 
 // Execute code
 
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
 
-bot.onText(/\/python(?:\s+([\s\S]*))?/, (msg, match) => {
-    const chatId = msg.chat.id;
-    const pythonCode = match[1]?.trim();
+  if (!msg.text || typeof msg.text !== 'string') return; 
+  const text = msg.text.toLowerCase();
+  if (text !== 'русская рулетка') return;
 
-    if (!pythonCode) {
-        bot.sendMessage(chatId, "Пожалуйста, укажите Python-код после команды /python");
-        return;
-    }
+  if (games.has(chatId)) {
+    bot.sendMessage(chatId, "⏳ В этом чате уже идёт рулетка!");
+    return;
+  }
 
-    if (pythonCode.length > 1000) {
-        bot.sendMessage(chatId, "Ошибка: Код слишком длинный (максимум 1000 символов).");
-        return;
-    }
+  const player = msg.from.first_name || 'Стрелок';
+  const bullets = Array(6).fill('◯'); 
+  const bulletPosition = Math.floor(Math.random() * 6); 
+  bullets[bulletPosition] = '💥';
+  let currentPosition = 0;   const game = {
+    player,
+    userId,
+    bullets,
+    bulletPosition,
+    currentPosition,
+    spins: 0
+  };
+  games.set(chatId, game);
 
-    const forbiddenPatterns = [
-        /\bimport\s+os\b/,
-        /\bimport\s+builtins\b/,
-        /\bimport\s+pty\b/,
-        /\bimport\s+shutil\b/,
-        /\bimport\s+base64\b/,
-        /\bimport\s+sys\b/,
-        /\bimport\s+socket\b/,
-        /\bimport\s+subprocess\b/,
-        /\bimport\s+importlib\b/,
-        /\bfrom\s+os\s+import\b/,
-        /\bfrom\s+sys\s+import\b/,
-        /\bfrom\s+subprocess\s+import\b/,
-        /\bfrom\s+socket\s+import\b/,
-        /\bfrom\s+shutil\s+import\b/,
-        /\bfrom\s+base64\s+import\b/,
-        /\bfrom\s+pty\s+import\b/,
-        /\bfrom\s+builtins\s+import\b/,
-        /\bfrom\s+importlib\s+import\b/,
-        /\bexec\s*\(/,
-        /\beval\s*\(/,
-        /\bcompile\s*\(/,
-        /\bopen\s*\(/,
-        /\brmtree\s*\(/,
-        /\bcopytree\s*\(/,
-        /\bremove\s*\(/,
-        /\bsystem\s*\(/,
-        /\bpopen\s*\(/,
-        /\b__import__\s*\(/,
-        /\+.*['"]\s*import\s*['"]/,
-        /['"]\s*\+\s*['"]/,
-        /\b\$BOT_TOKEN\b/,
-        /\.env\b/,
-        /bot\.js\b/
-    ];
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: "⬅️ Влево", callback_data: `rr_${chatId}_left` },
+        { text: "➡️ Вправо", callback_data: `rr_${chatId}_right` },
+      ],
+      [
+        { text: "🔫 Выстрелить", callback_data: `rr_${chatId}_shoot` }
+      ]
+    ]
+  };
 
-    for (const pattern of forbiddenPatterns) {
-        if (pattern.test(pythonCode)) {
-            bot.sendMessage(chatId, "Ошибка: Обнаружен запрещенный код или ключевые слова.");
-            return;
-        }
-    }
-
-    const tempFilePath = path.join(__dirname, `temp_${Date.now()}.py`);
-    const safePythonCode = `
-try:
-    __builtins__ = {}
-    ${pythonCode}
-except Exception as e:
-    print("Ошибка выполнения:", str(e))
-`.trim();
-
-    fs.writeFileSync(tempFilePath, safePythonCode);
-
-    const pythonCommand = `python3 "${tempFilePath}"`;
-
-    const options = {
-        timeout: 5000,
-        maxBuffer: 1024 * 1024,
-    };
-
-    exec(pythonCommand, options, (error, stdout, stderr) => {
-        fs.unlinkSync(tempFilePath);
-
-        if (error) {
-            if (error.killed) {
-                bot.sendMessage(chatId, "Ошибка: Выполнение кода превысило лимит времени (5 секунд).");
-            } else {
-                bot.sendMessage(chatId, `Ошибка выполнения: ${error.message}`);
-            }
-            return;
-        }
-
-        let output = (stdout + stderr).trim();
-
-        if (!output) {
-            bot.sendMessage(chatId, "Код выполнен, но вывода нет.");
-            return;
-        }
-
-        const lines = output.split("\n");
-        if (lines.length > 50) {
-            output = lines.slice(0, 50).join("\n") + "\n... (вывод обрезан)";
-        }
-
-        bot.sendMessage(chatId, `\`\`\`\n${output}\n\`\`\``, { parse_mode: "Markdown" });
+  try {
+    await bot.sendMessage(chatId, `🔫 ${player} начал Русскую рулетку!\nБарабан: ${bullets.join(' ')}\nТекущая позиция: ${game.currentPosition + 1} (${bullets[currentPosition]})\nКрути или стреляй!`, {
+      reply_markup: keyboard
     });
+  } catch (error) {
+    console.error('Ошибка отправки сообщения:', error);
+    bot.sendMessage(chatId, "⚠️ Не смог начать рулетку, попробуй ещё раз!");
+    games.delete(chatId);
+  }
+});
+
+bot.on('callback_query', async (query) => {
+  const chatId = query.message?.chat.id;
+  const userId = query.from.id;
+  const data = query.data?.split('_');
+
+  if (!chatId || !data || data[0] !== 'rr' || parseInt(data[1]) !== chatId) {
+    bot.answerCallbackQuery(query.id, { text: "Что-то пошло не так!" });
+    return;
+  }
+
+  if (!games.has(chatId)) {
+    bot.answerCallbackQuery(query.id, { text: "Рулетка не найдена!" });
+    return;
+  }
+
+  const game = games.get(chatId);
+  if (userId !== game.userId) {
+    bot.answerCallbackQuery(query.id, { text: "Это не твоя рулетка!" });
+    return;
+  }
+
+  const action = data[2];
+
+  const updateKeyboard = () => ({
+    inline_keyboard: [
+      [
+        { text: "⬅️ Влево", callback_data: `rr_${chatId}_left` },
+        { text: "➡️ Вправо", callback_data: `rr_${chatId}_right` },
+      ],
+      [
+        { text: "🔫 Выстрелить", callback_data: `rr_${chatId}_shoot` }
+      ]
+    ]
+  });
+
+  if (action === 'left' || action === 'right') {
+    game.spins++;
+    if (action === 'left') {
+      game.currentPosition = (game.currentPosition - 1 + 6) % 6;
+    } else {
+      game.currentPosition = (game.currentPosition + 1) % 6;
+    }
+
+    const displayBullets = game.bullets.map((b, i) => i === game.currentPosition ? `➡️${b}` : b).join(' ');
+    try {
+      await bot.editMessageText(
+        `🔫 ${game.player}, ты крутишь барабан (${game.spins} вращений)\nБарабан: ${displayBullets}\nТекущая позиция: ${game.currentPosition + 1}`,
+        {
+          chat_id: chatId,
+          message_id: query.message.message_id,
+          reply_markup: updateKeyboard()
+        }
+      );
+      bot.answerCallbackQuery(query.id, { text: `Барабан крутится ${action === 'left' ? 'влево' : 'вправо'}!` });
+    } catch (error) {
+      console.error('Ошибка редактирования сообщения:', error);
+      bot.sendMessage(chatId, "⚠️ Ошибка интерфейса, рулетка сломалась!");
+      games.delete(chatId);
+    }
+    return;
+  }
+
+  if (action === 'shoot') {
+    const isBullet = game.currentPosition === game.bulletPosition;
+    try {
+      if (isBullet) {
+        await bot.editMessageText(
+          `💥 БАХ! ${game.player}, ты проиграл!\nБарабан: ${game.bullets.join(' ')}\nПатрон был в позиции ${game.bulletPosition + 1}.\n🔇 Пытаюсь дать мут на 1 час...`,
+          {
+            chat_id: chatId,
+            message_id: query.message.message_id
+          }
+        );
+        try {
+          await bot.restrictChatMember(chatId, game.userId, {
+            until_date: Math.floor(Date.now() / 1000) + 3600, // 1 час
+            can_send_messages: false,
+            can_send_media: false,
+            can_send_polls: false,
+            can_send_other_messages: false,
+            can_add_web_page_previews: false
+          });
+          await bot.sendMessage(chatId, `🔇 ${game.player} замучен на 1 час!`);
+        } catch (muteError) {
+          console.error('Ошибка мута:', muteError);
+          await bot.sendMessage(chatId, `⚠️ Не смог замутить ${game.player}! Убедись, что у меня есть права администратора.`);
+        }
+      } else {
+        await bot.editMessageText(
+          `🔫 ЩЁЛК! ${game.player}, повезло, патрона нет!\nБарабан: ${game.bullets.join(' ')}\nТекущая позиция: ${game.currentPosition + 1}\nКрути дальше или стреляй снова!`,
+          {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+            reply_markup: updateKeyboard()
+          }
+        );
+      }
+      bot.answerCallbackQuery(query.id, { text: isBullet ? "💀 Ты мёртв!" : "🍀 Ты жив!" });
+    } catch (error) {
+      console.error('Ошибка при выстреле:', error);
+      bot.sendMessage(chatId, "⚠️ Ошибка в игре, рулетка сломалась!");
+    }
+
+    if (isBullet) {
+      games.delete(chatId);     }
+  }
 });
 
 // SVO
@@ -649,9 +1165,14 @@ bot.onText(/\/guess (\d+)/, (msg, match) => {
   }
 });
 
-bot.onText(/\/coinflip/, (msg) => {
+bot.onText(/\/coinflip/, async (msg) => {
+  const chatId = msg.chat.id;
+  const message = await bot.sendMessage(chatId, "🪙 Кручу...");
+  await new Promise(r => setTimeout(r, 500));
+  await bot.editMessageText("🪙 Орёл или Решка?", { chat_id: chatId, message_id: message.message_id });
+  await new Promise(r => setTimeout(r, 500));
   const result = Math.random() < 0.5 ? "🪙 Орёл" : "🪙 Решка";
-  bot.sendMessage(msg.chat.id, result);
+  bot.editMessageText(result, { chat_id: chatId, message_id: message.message_id });
 });
 
 const answers = ["Да", "Нет", "Возможно", "Спроси позже", "Определенно!", "Сомневаюсь", "Конечно нет!"];
@@ -771,6 +1292,9 @@ bot.onText(/\/help/, (msg) => {
 /date — Показать текущую дату
 /fetch — проверить ОС сервера.
 /help — Показать список команд.
+/myid - Вывести ID пользователя
+Брак - ( в ответ на сообщение ) - вступить в брак с пользователем , Развод , чтобы развестись
+Русская рулетка - запустить русскую рулетку
 
 *Модерационные команды* _(доступны только администраторам)_:
 /warn [username] — Выдать варн пользователю. Три варна — автоматический бан.
@@ -796,7 +1320,14 @@ bot.onText(/\/help/, (msg) => {
 /8ball - Узнать ответ
 /arch - Архитектура процессора сервера
 /kernel - Версия ядра сервера
-
+/rand - Выбрать на рандом
+/qr <текст или ссылка> - Создать qr
+/rate - Оценить от 1 до 10
+/rps - Камень-ножницы-бумага
+/wish - Исполнить любое желание
+/slot - Игровой автомат
+/bomb - Разминирование бомбы
+/duel - Дуэль с участниками
     `;
     bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: 'Markdown' });
 });
@@ -895,6 +1426,232 @@ bot.onText(/\/rand (.+)/, (msg, match) => {
 								        }
 				    }
 });
+
+
+// BRUCKS
+
+const marriageProposals = new Map();
+
+const getMarriageFilePath = (chatId) => `marriages_${chatId}.txt`;
+
+const readMarriages = (chatId) => {
+    const filePath = getMarriageFilePath(chatId);
+    try {
+        const data = fs.readFileSync(filePath, 'utf8');
+        return JSON.parse(data) || [];
+    } catch (e) {
+        return [];
+    }
+};
+
+const writeMarriages = (chatId, marriages) => {
+    const filePath = getMarriageFilePath(chatId);
+    fs.writeFileSync(filePath, JSON.stringify(marriages, null, 2));
+};
+
+const getDisplayName = (user) => user.username ? `@${user.username}` : user.first_name;
+
+const getMarriageLevel = (days) => {
+    if (days <= 30) return 'Молодожены';
+    if (days <= 90) return 'Зеленая свадьба';
+    if (days <= 180) return 'Розовая свадьба';
+    if (days <= 365) return 'Бумажная свадьба';
+    if (days <= 730) return 'Деревянная свадьба';
+    return 'Долгосрочный брак';
+};
+
+function animateMessage(chatId, messageId, texts, delay, index = 0) {
+    if (index >= texts.length) return;
+    try {
+        bot.editMessageText(texts[index], { chat_id: chatId, message_id: messageId });
+        setTimeout(() => animateMessage(chatId, messageId, texts, delay, index + 1), delay);
+    } catch (e) {
+        console.error('Ошибка анимации:', e);
+    }
+}
+
+bot.onText(/Брак/, (msg) => {
+    if (!msg.reply_to_message) {
+        bot.sendMessage(msg.chat.id, "Ответьте на сообщение пользователя, которому хотите предложить брак!");
+        return;
+    }
+
+    const proposerId = msg.from.id;
+    const proposedId = msg.reply_to_message.from.id;
+    const chatId = msg.chat.id;
+
+    if (proposerId === proposedId) {
+        bot.sendMessage(chatId, "Нельзя вступить в брак с самим собой!");
+        return;
+    }
+
+    const marriages = readMarriages(chatId);
+    if (marriages.some(m => (m.user1 === proposerId || m.user2 === proposerId) && m.status !== 'divorced')) {
+        bot.sendMessage(chatId, "Вы уже состоите в браке!");
+        return;
+    }
+    if (marriages.some(m => (m.user1 === proposedId || m.user2 === proposedId) && m.status !== 'divorced')) {
+        bot.sendMessage(chatId, "Этот пользователь уже состоит в браке!");
+        return;
+    }
+
+    const proposerName = getDisplayName(msg.from);
+    const proposedName = getDisplayName(msg.reply_to_message.from);
+    const proposalKey = `${chatId}_${proposedId}`;
+
+    marriageProposals.set(proposalKey, { proposerId, proposedId, proposerName, proposedName });
+
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: 'Да', callback_data: 'marriage_yes' }],
+            [{ text: 'Нет', callback_data: 'marriage_no' }]
+        ]
+    };
+
+    bot.sendMessage(chatId,
+        `${proposerName} предложил брак ${proposedName}! Согласны?`,
+        { reply_markup: JSON.stringify(keyboard) }
+    );
+});
+
+bot.on('callback_query', (query) => {
+    const chatId = query.message.chat.id;
+    const userId = query.from.id;
+    const proposalKey = `${chatId}_${userId}`;
+    const proposal = marriageProposals.get(proposalKey);
+
+    if (!proposal || proposal.proposedId !== userId) {
+        bot.answerCallbackQuery(query.id, { text: "Это предложение не для вас!" });
+        return;
+    }
+
+    const marriages = readMarriages(chatId);
+
+    if (query.data === 'marriage_yes') {
+        const marriage = {
+            user1: proposal.proposerId,
+            user2: proposal.proposedId,
+            name1: proposal.proposerName,
+            name2: proposal.proposedName,
+            status: 'green',
+            date: new Date().toISOString()
+        };
+        marriages.push(marriage);
+        writeMarriages(chatId, marriages);
+
+        bot.sendMessage(chatId, "Свадьба начинается... 💍").then((sentMsg) => {
+            const messageId = sentMsg.message_id;
+            const texts = [
+                "Свадьба в разгаре... 💍💍",
+                "Свадьба состоялась! 💍💍💍 Поздравляем!"
+            ];
+            animateMessage(chatId, messageId, texts, 1000);
+        });
+    } else {
+        // Анимация отказа
+        bot.sendMessage(chatId, "Отказ... 💔").then((sentMsg) => {
+            const messageId = sentMsg.message_id;
+            const texts = [
+                "Отказ принят... 💔💔",
+                "Предложение отклонено! 💔💔💔"
+            ];
+            animateMessage(chatId, messageId, texts, 1000);
+        });
+    }
+
+    marriageProposals.delete(proposalKey);
+    bot.deleteMessage(chatId, query.message.message_id);
+    bot.answerCallbackQuery(query.id);
+});
+
+bot.onText(/Развод/, (msg) => {
+    if (!msg.reply_to_message) {
+        bot.sendMessage(msg.chat.id, "Ответьте на сообщение супруга для развода!");
+        return;
+    }
+
+    const userId = msg.from.id;
+    const spouseId = msg.reply_to_message.from.id;
+    const chatId = msg.chat.id;
+
+    const marriages = readMarriages(chatId);
+    const marriage = marriages.find(m =>
+        (m.user1 === userId && m.user2 === spouseId) ||
+        (m.user1 === spouseId && m.user2 === userId)
+    );
+
+    if (!marriage || marriage.status === 'divorced') {
+        bot.sendMessage(chatId, "Вы не состоите в браке с этим пользователем!");
+        return;
+    }
+
+    marriage.status = 'divorced';
+    marriage.divorceDate = new Date().toISOString();
+    writeMarriages(chatId, marriages);
+
+    bot.sendMessage(chatId, "Развод... 👋").then((sentMsg) => {
+        const messageId = sentMsg.message_id;
+        const texts = [
+            "Развод в процессе... 👋👋",
+            "Развод завершен! 👋👋👋"
+        ];
+        animateMessage(chatId, messageId, texts, 1000);
+    });
+});
+
+bot.onText(/Браки/, (msg) => {
+    const chatId = msg.chat.id;
+    const marriages = readMarriages(chatId);
+
+    if (!marriages.length) {
+        bot.sendMessage(chatId, "В этой группе пока нет браков!");
+        return;
+    }
+
+    const statusNames = {
+        'green': 'Зеленая свадьба',
+        'divorced': 'Расторгнут'
+    };
+
+    let response = "💞 Список браков:\n\n";
+    marriages.forEach((m, i) => {
+        const status = statusNames[m.status] || m.status;
+        response += `${i + 1}. ${m.name1} и ${m.name2} - ${status}\n`;
+        response += `   Дата: ${moment(m.date).format('DD.MM.YYYY')}\n`;
+        if (m.divorceDate) {
+            response += `   Развод: ${moment(m.divorceDate).format('DD.MM.YYYY')}\n`;
+        }
+    });
+
+    bot.sendMessage(chatId, response);
+});
+
+bot.onText(/Мой брак/, (msg) => {
+    const userId = msg.from.id;
+    const chatId = msg.chat.id;
+    const marriages = readMarriages(chatId);
+
+    const marriage = marriages.find(m => (m.user1 === userId || m.user2 === userId) && m.status !== 'divorced');
+    if (!marriage) {
+        bot.sendMessage(chatId, "Вы не состоите в браке.");
+        return;
+    }
+
+    const spouseName = marriage.user1 === userId ? marriage.name2 : marriage.name1;
+    const marriageDate = new Date(marriage.date);
+    const now = new Date();
+    const daysMarried = Math.floor((now - marriageDate) / (1000 * 60 * 60 * 24));
+    const level = getMarriageLevel(daysMarried);
+
+    let response = `Ваш брак с ${spouseName}:\n`;
+    response += `Дата свадьбы: ${moment(marriageDate).format('DD.MM.YYYY')}\n`;
+    response += `Дней в браке: ${daysMarried}\n`;
+    response += `Уровень: ${level}\n`;
+
+    bot.sendMessage(chatId, response);
+});
+
+// BRUCKS SVO
 
 bot.on('message', (msg) => {
 	    const chatId = msg.chat.id;
