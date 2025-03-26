@@ -17,7 +17,7 @@ const weatherCache = new NodeCache({ stdTTL: 600 });
 const formatTemp = (temp) => `${Math.round(temp)}°C`;
 
 const getWeather = async (city) => {
-    const apiKey = 'aa1f5e3818444b79b10105107252503';
+    const apiKey = 'UR API KEY';
     const cacheKey = `weather_${city.toLowerCase()}`;
     
     const cachedWeather = weatherCache.get(cacheKey);
