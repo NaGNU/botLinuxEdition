@@ -19,7 +19,11 @@ const formatTemp = (temp) => `${Math.round(temp)}°C`;
 const getWeather = async (city) => {
     const apiKey = 'UR API KEY';
     const cacheKey = `weather_${city.toLowerCase()}`;
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> dev
     const cachedWeather = weatherCache.get(cacheKey);
     if (cachedWeather) {
         return cachedWeather;
@@ -29,20 +33,32 @@ const getWeather = async (city) => {
         const response = await axios.get(
             `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${encodeURIComponent(city)}&lang=ru`
         );
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> dev
         const data = response.data;
         const weatherData = {
             temp: data.current.temp_c,
             feelsLike: data.current.feelslike_c,
             description: data.current.condition.text,
             humidity: data.current.humidity,
+<<<<<<< HEAD
             windSpeed: data.current.wind_kph / 3.6, 
+=======
+            windSpeed: data.current.wind_kph / 3.6,
+>>>>>>> dev
             pressure: data.current.pressure_mb * 0.750062,
             city: data.location.name,
             country: data.location.country,
             timestamp: new Date(data.current.last_updated)
         };
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> dev
         weatherCache.set(cacheKey, weatherData);
         return weatherData;
     } catch (error) {
@@ -59,7 +75,11 @@ bot.onText(/^Бот погода (.+)/i, async (msg, match) => {
 
     try {
         const weather = await getWeather(city);
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> dev
         const response = `
 🌤️ Погода в ${weather.city}, ${weather.country}:
 Температура: ${formatTemp(weather.temp)}
@@ -327,10 +347,17 @@ bot.onText(/\/gb/, async (msg) => {
 
   const votes = { yes: 0, no: 0, voters: new Set() };
   const timeout = setTimeout(async () => {
+<<<<<<< HEAD
     const result = votes.yes > votes.no 
       ? `🔨 ${mention} будет забанен! (За: ${votes.yes}, Против: ${votes.no})`
       : `🕊️ ${mention} остаётся! (За: ${votes.yes}, Против: ${votes.no})`;
     
+=======
+    const result = votes.yes > votes.no
+      ? `🔨 ${mention} будет забанен! (За: ${votes.yes}, Против: ${votes.no})`
+      : `🕊️ ${mention} остаётся! (За: ${votes.yes}, Против: ${votes.no})`;
+
+>>>>>>> dev
     bot.sendMessage(chatId, result);
     if (votes.yes > votes.no) {
       await bot.banChatMember(chatId, targetUser.id);
@@ -365,7 +392,11 @@ bot.onText(/\/rate (.+)/, (msg, match) => {
 
 // RPS
 
+<<<<<<< HEAD
 const games = new Map(); 
+=======
+const games = new Map();
+>>>>>>> dev
 
 bot.onText(/\/rps/, async (msg) => {
   const chatId = msg.chat.id;
@@ -577,7 +608,11 @@ bot.onText(/\/slot/, async (msg) => {
   const spin = () => symbols[Math.floor(Math.random() * symbols.length)];
   let result = [spin(), spin(), spin()];
   const slotMsg = await bot.sendMessage(chatId, `🎰 ${player} крутит слот...\n${result.join(' ')}`);
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> dev
   for (let i = 0; i < 3; i++) {
     await new Promise(r => setTimeout(r, 500));
     result = [spin(), spin(), spin()];
@@ -997,7 +1032,11 @@ bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
 
+<<<<<<< HEAD
   if (!msg.text || typeof msg.text !== 'string') return; 
+=======
+  if (!msg.text || typeof msg.text !== 'string') return;
+>>>>>>> dev
   const text = msg.text.toLowerCase();
   if (text !== 'русская рулетка') return;
 
@@ -1007,8 +1046,13 @@ bot.on('message', async (msg) => {
   }
 
   const player = msg.from.first_name || 'Стрелок';
+<<<<<<< HEAD
   const bullets = Array(6).fill('◯'); 
   const bulletPosition = Math.floor(Math.random() * 6); 
+=======
+  const bullets = Array(6).fill('◯');
+  const bulletPosition = Math.floor(Math.random() * 6);
+>>>>>>> dev
   bullets[bulletPosition] = '💥';
   let currentPosition = 0;   const game = {
     player,
@@ -1684,6 +1728,7 @@ bot.on('message', (msg) => {
 													    } else if (actionText.includes('поцеловать в лоб')) {
 														            bot.sendMessage(chatId, `💋 ${userWhoActed} поцеловал ${targetUser} в лоб!`);
 														        } else if (actionText.includes('поцеловать в щёку')) {
+<<<<<<< HEAD
 																        bot.sendMessage(chatId, `😘 ${userWhoActed} поцеловал ${targetUser} в щёку!`);
 																    } else if (actionText.includes('погонять')) {
 																	            bot.sendMessage(chatId, `🏃‍♂️ ${userWhoActed} погнал ${targetUser}!`);
@@ -1720,4 +1765,42 @@ bot.on('message', (msg) => {
 																														  } else if (actionText.includes('пожать плечо')) {
 																														          bot.sendMessage(chatId, `💪 ${userWhoActed} пожал плечо ${targetUser}!`);
 																														      }
+=======
+															       bot.sendMessage(chatId, `😘 ${userWhoActed} поцеловал ${targetUser} в щёку!`);
+															   } else if (actionText.includes('погонять')) {
+															           bot.sendMessage(chatId, `🏃‍♂️ ${userWhoActed} погнал ${targetUser}!`);
+															       } else if (actionText.includes('позвать')) {
+															       bot.sendMessage(chatId, `📞 ${userWhoActed} позвал ${targetUser}!`);
+															   } else if (actionText.includes('сделать комплимент')) {
+															           bot.sendMessage(chatId, `💖 ${userWhoActed} сделал комплимент ${targetUser}!`);
+															       } else if (actionText.includes('подарить цветы')) {
+															       bot.sendMessage(chatId, `💐 ${userWhoActed} подарил цветы ${targetUser}!`);
+															   } else if (actionText.includes('погладить по голове')) {
+															           bot.sendMessage(chatId, `🧠 ${userWhoActed} погладил ${targetUser} по голове!`);
+															       } else if (actionText.includes('накормить')) {
+															       bot.sendMessage(chatId, `🍽️ ${userWhoActed} накормил ${targetUser}!`);
+															   } else if (actionText.includes('погладить спину')) {
+															           bot.sendMessage(chatId, `💆‍♀️ ${userWhoActed} погладил спину ${targetUser}!`);
+															       } else if (actionText.includes('обнять сзади')) {
+															       bot.sendMessage(chatId, `🙆‍♂️ ${userWhoActed} обнял ${targetUser} сзади!`);
+															   } else if (actionText.includes('поцеловать в шею')) {
+															           bot.sendMessage(chatId, `💋 ${userWhoActed} поцеловал ${targetUser} в шею!`);
+															       } else if (actionText.includes('прикоснуться к щеке')) {
+															     bot.sendMessage(chatId, `🥰 ${userWhoActed} прикоснулся к щеке ${targetUser}!`);
+															 } else if (actionText.includes('встряхнуть')) {
+															         bot.sendMessage(chatId, `👐 ${userWhoActed} встряхнул ${targetUser}!`);
+															     } else if (actionText.includes('позаботиться')) {
+															     bot.sendMessage(chatId, `💝 ${userWhoActed} позаботился о ${targetUser}!`);
+															 } else if (actionText.includes('обнять за талию')) {
+															         bot.sendMessage(chatId, `💃 ${userWhoActed} обнял ${targetUser} за талию!`);
+															     } else if (actionText.includes('покачать на руках')) {
+															     bot.sendMessage(chatId, `💪 ${userWhoActed} покачал ${targetUser} на руках!`);
+															 } else if (actionText.includes('сделать массаж')) {
+															         bot.sendMessage(chatId, `💆‍♂️ ${userWhoActed} сделал массаж ${targetUser}!`);
+															     } else if (actionText.includes('поцеловать в лобик')) {
+															     bot.sendMessage(chatId, `💋 ${userWhoActed} поцеловал ${targetUser} в лобик!`);
+															 } else if (actionText.includes('пожать плечо')) {
+															         bot.sendMessage(chatId, `💪 ${userWhoActed} пожал плечо ${targetUser}!`);
+															     }
+>>>>>>> dev
 });
